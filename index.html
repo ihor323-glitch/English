@@ -406,7 +406,9 @@ const meanings=w=>nodash(w.ru).split(' · ').map(x=>x.trim()).filter(Boolean);
 const MI={};
 function shortRu(w){const m=meanings(w);if(m.length<2)return m[0]||w.ru;const i=((MI[w.key]==null?Math.floor(Math.random()*m.length):MI[w.key]+1))%m.length;MI[w.key]=i;return m[i]}
 const anyRu=w=>{const m=meanings(w);return m[Math.floor(Math.random()*m.length)]||w.ru};
-const kindOf=w=>w._k||(w._k=(w.en.split(' ').length>2||/[.?!…]$/.test(w.en))?'p':'w');
+/* 's' = full sentence (capital letter, ends with . ? ! …), 'p' = lowercase phrase of 3+ words, 'w' = word or two-word expression */
+const kindOf=w=>w._k||(w._k=/[.?!…]$/.test(w.en.trim())?'s':w.en.trim().split(/\s+/).length>2?'p':'w');
+const isSent=w=>kindOf(w)==='s';
 const STOPW=new Set(['the','and','for','with','you','your','that','this','from','are','was','have','has','not','but','его','для','что','как','при','или','это','над','под','мне','меня','тебя','тебе','вас','вам','нас','нам','они','она','оно','все','всё','так','уже','ещё']);
 const toks=t=>String(t).toLowerCase().replace(/[^a-zа-яё' ]/g,' ').split(/\s+/).filter(x=>x.length>2&&!STOPW.has(x));
 const stem=t=>t.length>5?t.slice(0,t.length-2):t;
@@ -422,21 +424,23 @@ function nearKeys(words,extra){
 }
 /* Wrong options that are easy to confuse with the answer. Each card gets a score:
    shares an English word (good afternoon / good evening) +4, shares a Russian word stem +2,
-   neighbour in the same topic +3..+1, learned recently +3, same kind (word vs phrase) +1 / otherwise -3, plus a little randomness.
+   neighbour in the same topic +3..+1, learned recently +3, same kind (word vs phrase) +1 / otherwise -2, plus a little randomness.
+   Sentences and words/phrases are never mixed: a lowercase answer among capitalised sentences (or the reverse) gives itself away.
    A card with the same meaning is never offered (it would be a second correct answer, e.g. hi / hello for «привет»).
    At least one option is a recently learned word, so the answer can't be found by elimination. */
 function distractors(w,field,correct){
   const myM=new Set(meanN(w)),me=tokStems(w),kd=kindOf(w),near=(Q&&Q.near)||new Set();
   const sameMeaning=x=>meanN(x).some(m=>myM.has(m));
+  const sent=isSent(w),sameForm=x=>isSent(x)===sent;
   const sc=[];
   for(const x of WORDS){
-    if(x.key===w.key||sameMeaning(x))continue;
+    if(x.key===w.key||!sameForm(x)||sameMeaning(x))continue;
     const t=tokStems(x),isNear=near.has(x.key);let s=0;
     for(const v of t.e)if(me.e.has(v)){s+=4;break}
     for(const v of t.r)if(me.r.has(v)){s+=2;break}
     if(x.tp===w.tp){const d=Math.abs(x.n-w.n);s+=d<=3?3:d<=8?2:1}
     if(isNear)s+=3;
-    s+=kindOf(x)===kd?1:-3;
+    s+=kindOf(x)===kd?1:-2;
     if(s>0)sc.push({x,near:isNear,s:s+Math.random()*2});
   }
   sc.sort((a,b)=>b.s-a.s);
@@ -444,6 +448,7 @@ function distractors(w,field,correct){
   const take=x=>{const d=field==='ru'?anyRu(x):x.en,nd=norm(d);if(!d||seen.has(nd))return false;seen.add(nd);out.push(d);return true};
   const nr=sc.find(c=>c.near);if(nr)take(nr.x);
   for(const c of sc){if(out.length>=3)break;take(c.x)}
+  for(let i=0;out.length<3&&i<300;i++){const x=WORDS[Math.floor(Math.random()*WORDS.length)];if(x.key!==w.key&&sameForm(x)&&!sameMeaning(x))take(x)}
   for(let i=0;out.length<3&&i<300;i++){const x=WORDS[Math.floor(Math.random()*WORDS.length)];if(x.key!==w.key&&!sameMeaning(x))take(x)}
   return out;
 }
@@ -1146,7 +1151,7 @@ function statsHtml(){
 
 /* ---------- settings ---------- */
 const GPT_PROMPT='Составь список слов и фраз для изучения английского. Формат: CSV, разделитель — точка с запятой, три колонки: en;ru;note. В колонке note короткий пример или заметка (можно оставить пустой). Без заголовка и без нумерации, каждая запись с новой строки, кодировка UTF-8. Выдай результат одним блоком кода.\n\nПример:\nI need to check the address.;Мне нужно проверить адрес.;Need to + глагол — необходимость\nbring;приносить · привозить;';
-const APP_VER='16 · 24.11.2026';
+const APP_VER='17 · 24.11.2026';
 function settingsHtml(){
   const total=WORDS.length,L=lists.learned().length;
   return topbar('Настройки','<span class="ic"></span>')+`<div class="sec">
