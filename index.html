@@ -170,6 +170,7 @@ select.sel{background:#2f2f2f;color:#fff;border:2px solid #555;border-radius:10p
 .pre.mono{font-family:ui-monospace,Menlo,monospace;font-size:13px}
 #toast{position:fixed;left:50%;bottom:calc(30px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);background:#000d;color:#fff;padding:12px 18px;border-radius:14px;font-size:16px;opacity:0;transition:.2s;pointer-events:none;z-index:50;max-width:88vw;text-align:center}
 #toast.on{opacity:1;transform:translateX(-50%)}
+.set.hwr{background:#3a3a3a;border:0;border-radius:14px;margin:-4px auto 16px;max-width:420px;font-size:17px}
 .bakn{width:100%;max-width:420px;background:#3a3a3a;border-left:4px solid #ffcf6b;border-radius:12px;padding:12px 14px;margin:0 0 26px;text-align:left;font-size:16px;line-height:1.4;color:#e6e6e6}
 .bakn .bb{display:flex;gap:8px;margin-top:10px}.bakn button{flex:1;border-radius:999px;padding:10px;font-size:16px;font-weight:700}
 .bakn .bk1{background:var(--green);color:#fff}.bakn .bk2{background:#4a4a4a;color:#fff}
@@ -393,7 +394,12 @@ function cardsHtml(){
 
 /* ---------- quiz engine ---------- */
 const MIX=['ru','en','listen','build','ru','en','listenbuild','write'];
-function pickType(mode){return mode==='mixed'?MIX[Math.floor(Math.random()*MIX.length)]:mode}
+const MIX_EASY=MIX.filter(t=>t!=='write');
+// "Сложное написание" switch on the modes screen (on by default): typing the whole word in the mixed mode
+const hardOn=()=>S.set.hardWrite!==false;
+function pickType(mode){const a=hardOn()?MIX:MIX_EASY;return mode==='mixed'?a[Math.floor(Math.random()*a.length)]:mode}
+// a word that is being learned for the first time is never checked by typing: letter tiles instead
+const LEARN_TYPE={write:'build',listenwrite:'listenbuild'};
 function startQuiz(kind,words,mode,extra){
   Q={t0:Date.now(),kind,mode,items:[],done:0,total:words.length,first:0,miss:0,locked:false,extra:extra||{},cur:null};
   Q.items=words.map(w=>({w,steps:kind==='learn'?['ru','build']:[pickType(mode)],si:0,miss:false,counted:false}));
@@ -613,8 +619,8 @@ function modesHtml(){
       <p style="font-size:14px;color:#a9a9a9;margin:0 0 18px">Сначала идут слова, которые вы дольше всего не повторяли. В следующий раз продолжите со следующих.</p>`})()}
     <h2>Выберите режим</h2>
     <p>Используйте различные режимы обучения для эффективного освоения английского</p>
-    ${m.map(([k,t])=>`<button class="btn light" data-act="revmode" data-m="${k}">${t}</button>`).join('')}
-    <p style="font-size:14px;color:#a9a9a9;margin:4px 0 0">«Составить слово»: собираете слово из букв. «Написать» — вводите всё сами, без подсказок.</p>
+    ${m.map(([k,t])=>`<button class="btn light" data-act="revmode" data-m="${k}">${t}</button>`+(k==='mixed'?`<button class="set hwr" data-act="hardw"><span>Сложное написание<small>В смешанном режиме иногда нужно ввести слово с клавиатуры. Новые слова так не проверяются никогда</small></span><span class="sw ${hardOn()?'on':''}" id="hwsw"></span></button>`:'')).join('')}
+    <p style="font-size:14px;color:#a9a9a9;margin:4px 0 0">«Составить слово»: собираете слово из букв. «Написать» — вводите всё сами, без подсказок.${view.params.c==='pack'?' Новые слова подборки в этих режимах собираются из букв.':''}</p>
   </div></div>`;
 }
 function startReview(c,mode){
@@ -974,7 +980,7 @@ function startPackQuiz(pid,mode,learnKeys){
   if(!words.length){toast('В подборке нет доступных карточек');back();return}
   const ln=new Set(learnKeys);
   startQuiz('pack',words,mode,{pid,mode,title:pk.name,prep:q=>{
-    q.items.forEach(it=>{if(ln.has(it.w.key)){it.kind='learn';it.steps=mode==='mixed'?['ru','build']:[mode]}else{it.kind='review';it.steps=[pickType(mode)]}});
+    q.items.forEach(it=>{if(ln.has(it.w.key)){it.kind='learn';it.steps=mode==='mixed'?['ru','build']:[LEARN_TYPE[mode]||mode]}else{it.kind='review';it.steps=[pickType(mode)]}});
     if(S.set.rnd)q.items=shuffle(q.items);
     else q.items.sort((a,b)=>(a.kind==='learn'?0:1)-(b.kind==='learn'?0:1));
   }});
@@ -1151,7 +1157,7 @@ function statsHtml(){
 
 /* ---------- settings ---------- */
 const GPT_PROMPT='Составь список слов и фраз для изучения английского. Формат: CSV, разделитель — точка с запятой, три колонки: en;ru;note. В колонке note короткий пример или заметка (можно оставить пустой). Без заголовка и без нумерации, каждая запись с новой строки, кодировка UTF-8. Выдай результат одним блоком кода.\n\nПример:\nI need to check the address.;Мне нужно проверить адрес.;Need to + глагол — необходимость\nbring;приносить · привозить;';
-const APP_VER='17 · 24.11.2026';
+const APP_VER='18 · 24.11.2026';
 function settingsHtml(){
   const total=WORDS.length,L=lists.learned().length;
   return topbar('Настройки','<span class="ic"></span>')+`<div class="sec">
@@ -1361,6 +1367,7 @@ const A={
   export:exportBackup,
   baklater(){S.bakSnooze=Date.now();save();render()},
   revn(t){S.set.revN=+t.dataset.n;save();render()},
+  hardw(){S.set.hardWrite=!hardOn();save();const s=$('#hwsw');if(s)s.classList.toggle('on',hardOn())},
   restore(){$('#filebak').click()},
   reset(){if(!confirm('Сбросить весь прогресс? Выученные слова, ошибки, избранное и скрытые слова будут обнулены. Подборки уроков будут удалены. Добавленные вами слова останутся.'))return;if(!confirm('Точно сбросить? Это нельзя отменить.'))return;S.st={};S.ov={};S.log=[];S.sess=[];S.packs=[];S.seed=Object.assign(S.seed||{},{p06:1});S.favInit=false;save();buildWords();toast('Прогресс сброшен');home()}
 };
