@@ -1,4 +1,4 @@
-const V='english-v15';
+const V='english-v16';
 const FILES=['./','./index.html','./words.js','./manifest.webmanifest','./icon-192.png','./icon-512.png','./apple-touch-icon.png'];
 // cache:'reload' / 'no-cache' bypass the browser's HTTP cache, so a new version is picked up on the next launch
 self.addEventListener('install',e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(FILES.map(u=>new Request(u,{cache:'reload'})))).then(()=>self.skipWaiting()))});

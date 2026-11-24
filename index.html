@@ -399,6 +399,7 @@ function startQuiz(kind,words,mode,extra){
   Q.items=words.map(w=>({w,steps:kind==='learn'?['ru','build']:[pickType(mode)],si:0,miss:false,counted:false}));
   if(kind==='learn')Q.items=shuffle(Q.items);
   if(Q.extra.prep)Q.extra.prep(Q);
+  Q.near=nearKeys(words,Q.extra);
   go('quiz',{},true);
 }
 const meanings=w=>nodash(w.ru).split(' · ').map(x=>x.trim()).filter(Boolean);
@@ -406,42 +407,44 @@ const MI={};
 function shortRu(w){const m=meanings(w);if(m.length<2)return m[0]||w.ru;const i=((MI[w.key]==null?Math.floor(Math.random()*m.length):MI[w.key]+1))%m.length;MI[w.key]=i;return m[i]}
 const anyRu=w=>{const m=meanings(w);return m[Math.floor(Math.random()*m.length)]||w.ru};
 const kindOf=w=>w._k||(w._k=(w.en.split(' ').length>2||/[.?!…]$/.test(w.en))?'p':'w');
-const STOPW=new Set(['the','and','for','with','you','your','that','this','from','are','was','have','has','not','but','его','для','что','как','при','или','это','над','под']);
+const STOPW=new Set(['the','and','for','with','you','your','that','this','from','are','was','have','has','not','but','его','для','что','как','при','или','это','над','под','мне','меня','тебя','тебе','вас','вам','нас','нам','они','она','оно','все','всё','так','уже','ещё']);
 const toks=t=>String(t).toLowerCase().replace(/[^a-zа-яё' ]/g,' ').split(/\s+/).filter(x=>x.length>2&&!STOPW.has(x));
 const stem=t=>t.length>5?t.slice(0,t.length-2):t;
 // token stems are computed once per card (the cache is dropped when buildWords() recreates the cards)
 const tokStems=w=>w._ts||(w._ts={e:new Set(toks(w.en).map(stem)),r:new Set(toks(w.ru).map(stem))});
-function closeCards(w){
-  const out=[],seen=new Set([w.key]);
-  const add=x=>{if(x&&!seen.has(x.key)){seen.add(x.key);out.push(x)}};
-  const pid=Q&&Q.extra&&Q.extra.pid,pk=pid?getPack(pid):null;
-  if(pk)shuffle(packWords(pk)).forEach(add);
-  const me=tokStems(w);
-  const lex=WORDS.filter(x=>{if(x.key===w.key)return false;const t=tokStems(x);
-    for(const s of t.e)if(me.e.has(s))return true;
-    for(const s of t.r)if(me.r.has(s))return true;
-    return false});
-  shuffle(lex).slice(0,12).forEach(add);
-  return out;
+const meanN=w=>w._mn||(w._mn=meanings(w).map(norm));
+/* "recent" words for distractors: the last 30 learned words, the words of a short session itself, and the pack in a pack session */
+function nearKeys(words,extra){
+  const s=new Set(lists.learned().sort((a,b)=>(E(b).l||0)-(E(a).l||0)).slice(0,30).map(w=>w.key));
+  if(words.length<=30)words.forEach(w=>s.add(w.key));
+  const pk=extra&&extra.pid?getPack(extra.pid):null;if(pk)pk.keys.forEach(k=>s.add(k));
+  return s;
 }
+/* Wrong options that are easy to confuse with the answer. Each card gets a score:
+   shares an English word (good afternoon / good evening) +4, shares a Russian word stem +2,
+   neighbour in the same topic +3..+1, learned recently +3, same kind (word vs phrase) +1 / otherwise -3, plus a little randomness.
+   A card with the same meaning is never offered (it would be a second correct answer, e.g. hi / hello for «привет»).
+   At least one option is a recently learned word, so the answer can't be found by elimination. */
 function distractors(w,field,correct){
-  const out=[],seen=new Set();
-  seen.add(norm(correct));
-  const myMeans=nodash(w.ru).split(' · ').map(norm);
-  const take=x=>{
-    const d=field==='ru'?anyRu(x):x.en;const nd=norm(d);
-    if(!d||seen.has(nd))return false;
-    if(field==='ru'&&nodash(x.ru).split(' · ').some(m=>myMeans.includes(norm(m))))return false;
-    seen.add(nd);out.push(d);return true;
-  };
-  const nClose=1+Math.floor(Math.random()*3);let got=0;
-  for(const x of closeCards(w)){if(got>=nClose)break;if(take(x))got++}
-  const same=shuffle(WORDS.filter(x=>x.key!==w.key&&x.tp===w.tp&&kindOf(x)===kindOf(w)));
-  for(const x of same.slice(0,12)){if(out.length>=3)break;take(x)}
-  // random words from the whole dictionary (previously only the first 600 were ever used)
-  const ok=x=>x.key!==w.key&&kindOf(x)===kindOf(w);
-  for(let i=0;out.length<3&&i<300;i++){const x=WORDS[Math.floor(Math.random()*WORDS.length)];if(ok(x))take(x)}
-  for(const x of WORDS){if(out.length>=3)break;if(ok(x))take(x)}
+  const myM=new Set(meanN(w)),me=tokStems(w),kd=kindOf(w),near=(Q&&Q.near)||new Set();
+  const sameMeaning=x=>meanN(x).some(m=>myM.has(m));
+  const sc=[];
+  for(const x of WORDS){
+    if(x.key===w.key||sameMeaning(x))continue;
+    const t=tokStems(x),isNear=near.has(x.key);let s=0;
+    for(const v of t.e)if(me.e.has(v)){s+=4;break}
+    for(const v of t.r)if(me.r.has(v)){s+=2;break}
+    if(x.tp===w.tp){const d=Math.abs(x.n-w.n);s+=d<=3?3:d<=8?2:1}
+    if(isNear)s+=3;
+    s+=kindOf(x)===kd?1:-3;
+    if(s>0)sc.push({x,near:isNear,s:s+Math.random()*2});
+  }
+  sc.sort((a,b)=>b.s-a.s);
+  const out=[],seen=new Set([norm(correct)]);
+  const take=x=>{const d=field==='ru'?anyRu(x):x.en,nd=norm(d);if(!d||seen.has(nd))return false;seen.add(nd);out.push(d);return true};
+  const nr=sc.find(c=>c.near);if(nr)take(nr.x);
+  for(const c of sc){if(out.length>=3)break;take(c.x)}
+  for(let i=0;out.length<3&&i<300;i++){const x=WORDS[Math.floor(Math.random()*WORDS.length)];if(x.key!==w.key&&!sameMeaning(x))take(x)}
   return out;
 }
 function enNorm(s){return norm(s).replace(/…|\.\.\./g,' ').replace(/[.,!?;:"“”]/g,'').replace(/\s+/g,' ').trim()}
@@ -1143,7 +1146,7 @@ function statsHtml(){
 
 /* ---------- settings ---------- */
 const GPT_PROMPT='Составь список слов и фраз для изучения английского. Формат: CSV, разделитель — точка с запятой, три колонки: en;ru;note. В колонке note короткий пример или заметка (можно оставить пустой). Без заголовка и без нумерации, каждая запись с новой строки, кодировка UTF-8. Выдай результат одним блоком кода.\n\nПример:\nI need to check the address.;Мне нужно проверить адрес.;Need to + глагол — необходимость\nbring;приносить · привозить;';
-const APP_VER='15 · 23.11.2026';
+const APP_VER='16 · 24.11.2026';
 function settingsHtml(){
   const total=WORDS.length,L=lists.learned().length;
   return topbar('Настройки','<span class="ic"></span>')+`<div class="sec">
