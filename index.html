@@ -503,7 +503,8 @@ function buildSetup(w,type){
   if(isWords){
     extra=shuffle(WORDS.filter(x=>/^[a-z]{2,6}$/i.test(x.en)&&!toks.includes(x.en.toLowerCase()))).slice(0,2).map(x=>x.en.toLowerCase());
   }else{
-    const abc='abcdefghijklmnopqrstuvwxyz'.split('').filter(c=>!toks.includes(c));
+    // lowercase «l» looks exactly like capital «I» in this font, so it is never a spare letter when the answer has «i»
+    const abc='abcdefghijklmnopqrstuvwxyz'.split('').filter(c=>!toks.includes(c)&&!(c==='l'&&toks.includes('i')));
     const nl=toks.filter(c=>c!==' ').length;
     extra=shuffle(abc).slice(0,nl<=5?2:nl<=9?3:4);
   }
@@ -1161,7 +1162,7 @@ function statsHtml(){
 
 /* ---------- settings ---------- */
 const GPT_PROMPT='Составь список слов и фраз для изучения английского. Формат: CSV, разделитель — точка с запятой, три колонки: en;ru;note. В колонке note короткий пример или заметка (можно оставить пустой). Без заголовка и без нумерации, каждая запись с новой строки, кодировка UTF-8. Выдай результат одним блоком кода.\n\nПример:\nI need to check the address.;Мне нужно проверить адрес.;Need to + глагол — необходимость\nbring;приносить · привозить;';
-const APP_VER='21 · 25.11.2026';
+const APP_VER='22 · 25.11.2026';
 function settingsHtml(){
   const total=WORDS.length,L=lists.learned().length;
   return topbar('Настройки','<span class="ic"></span>')+`<div class="sec">
