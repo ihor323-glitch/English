@@ -1161,7 +1161,7 @@ function statsHtml(){
 
 /* ---------- settings ---------- */
 const GPT_PROMPT='Составь список слов и фраз для изучения английского. Формат: CSV, разделитель — точка с запятой, три колонки: en;ru;note. В колонке note короткий пример или заметка (можно оставить пустой). Без заголовка и без нумерации, каждая запись с новой строки, кодировка UTF-8. Выдай результат одним блоком кода.\n\nПример:\nI need to check the address.;Мне нужно проверить адрес.;Need to + глагол — необходимость\nbring;приносить · привозить;';
-const APP_VER='20 · 24.11.2026';
+const APP_VER='21 · 25.11.2026';
 function settingsHtml(){
   const total=WORDS.length,L=lists.learned().length;
   return topbar('Настройки','<span class="ic"></span>')+`<div class="sec">
@@ -1246,7 +1246,11 @@ const A={
     if(p<0)return;
     if(c.slots[p]!=null){c.tiles[c.slots[p]].used=false;c.slots[p]=null}
     let ti=c.tiles.findIndex(x=>!x.used&&x.t===c.toks[p]);
-    if(ti<0){ti=c.tiles.findIndex(x=>x.t===c.toks[p]);const so=c.slots.indexOf(ti);if(so>=0&&!c.hint.has(so))c.slots[so]=null}
+    // no free tile with this letter: take one that stands in a WRONG place (never a correct or hinted one)
+    if(ti<0){
+      ti=c.tiles.findIndex((x,i)=>{if(x.t!==c.toks[p])return false;const so=c.slots.indexOf(i);return so>=0&&!c.hint.has(so)&&c.toks[so]!==x.t});
+      if(ti>=0)c.slots[c.slots.indexOf(ti)]=null;
+    }
     if(ti<0)return;
     c.slots[p]=ti;c.tiles[ti].used=true;c.hint.add(p);
     Q.items[0].miss=true;
